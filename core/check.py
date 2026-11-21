@@ -112,14 +112,17 @@ class EnvChecker:
         if SYSTEM == "Darwin":
             return "brew install sing-box"
         elif SYSTEM == "Windows":
-            return ("下载 sing-box.exe 并加入 PATH:\n"
+            return ("下载 releases 里的 sing-box-<版本>-windows-amd64.zip:\n"
                     "https://github.com/SagerNet/sing-box/releases\n"
-                    "(解压后把 sing-box.exe 所在目录加入 PATH;"
-                    "scoop / winget 安装的会被自动找到)")
+                    "解压出 sing-box.exe,放入任一 PATH 目录\n"
+                    "(设置 → 系统 → 编辑环境变量,或直接放进\n"
+                    "C:\\Users\\你\\AppData\\Local\\Microsoft\\WinGet\\Links)\n"
+                    "scoop / chocolatey 安装的也会被自动找到")
         elif SYSTEM == "Linux":
-            return """curl -L https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz -o /tmp/sing-box.tar.gz
+            return """ver=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep -oP '"tag_name":\\s*"v\\K[^"]+')
+curl -L "https://github.com/SagerNet/sing-box/releases/download/v$ver/sing-box-$ver-linux-amd64.tar.gz" -o /tmp/sing-box.tar.gz
 tar -xzf /tmp/sing-box.tar.gz -C /tmp
-sudo mv /tmp/sing-box-linux-amd64/sing-box /usr/local/bin/
+sudo mv "/tmp/sing-box-$ver-linux-amd64/sing-box" /usr/local/bin/
 sudo chmod +x /usr/local/bin/sing-box"""
         return "未知系统"
 
