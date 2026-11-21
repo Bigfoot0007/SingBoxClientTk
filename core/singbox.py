@@ -118,7 +118,7 @@ class SingBoxManager:
         it was recycled by the OS.
         """
         if platform.system() == "Windows":
-            return False
+            return self._reap_orphan_windows()
         killed = False
         try:
             with open(self.pid_path) as f:
@@ -156,6 +156,32 @@ class SingBoxManager:
             except Exception:
                 pass
         return killed
+
+    def _reap_orphan_windows(self) -> bool:
+        """Windows has no pgrep — trust the pid file, but verify via
+        tasklist that the (possibly recycled) pid really is sing-box."""
+        try:
+            with open(self.pid_path) as f:
+                pid = int(f.read().strip())
+        except (OSError, ValueError):
+            return False
+        try:
+            try:
+                out = subprocess.run(
+                    ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
+                    capture_output=True, text=True, timeout=5).stdout
+                if "sing-box" in out.lower():
+                    subprocess.run(["taskkill", "/PID", str(pid), "/F"],
+                                   capture_output=True, timeout=5)
+                    return True
+            except Exception:
+                pass
+        finally:
+            try:
+                os.remove(self.pid_path)
+            except OSError:
+                pass
+        return False
 
     @staticmethod
     def _is_singbox(pid: int) -> bool:

@@ -278,6 +278,20 @@ class ProxyManager:
     # ── Windows ─────────────────────────────────────────────────────────
 
     @staticmethod
+    def _windows_broadcast():
+        """Notify running apps that Internet Settings changed — registry
+        edits alone are only picked up by some (IE/WinINet-based) apps."""
+        try:
+            import ctypes
+            WM_SETTINGCHANGE = 0x001A
+            SMTO_ABORTIFHUNG = 0x0002
+            ctypes.windll.user32.SendMessageTimeoutW(
+                None, WM_SETTINGCHANGE, 0, "Internet Settings",
+                SMTO_ABORTIFHUNG, 5000, None)
+        except Exception:
+            pass
+
+    @staticmethod
     def _windows_read() -> dict:
         try:
             import winreg
@@ -322,6 +336,7 @@ class ProxyManager:
                 winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ,
                                   state["override"])
             winreg.CloseKey(key)
+            ProxyManager._windows_broadcast()
             return True
         except Exception:
             return False
@@ -340,6 +355,8 @@ class ProxyManager:
                               f"127.0.0.1:{port}")
             winreg.SetValueEx(key, "ProxyOverride", 0, winreg.REG_SZ,
                               "<local>")
+            winreg.CloseKey(key)
+            ProxyManager._windows_broadcast()
             return True
         except Exception:
             return False
@@ -354,6 +371,8 @@ class ProxyManager:
                 0, winreg.KEY_SET_VALUE
             )
             winreg.SetValueEx(key, "ProxyEnable", 0, winreg.REG_DWORD, 0)
+            winreg.CloseKey(key)
+            ProxyManager._windows_broadcast()
             return True
         except Exception:
             return False

@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
 
 a = Analysis(
     ['app.py'],
@@ -27,6 +28,7 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon='assets/AppIcon.ico' if sys.platform == 'win32' else None,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -42,14 +44,15 @@ coll = COLLECT(
     upx_exclude=[],
     name='SingBoxClient',
 )
-app = BUNDLE(
-    coll,
-    name='SingBoxClient.app',
-    icon='assets/AppIcon.icns',
-    bundle_identifier='local.singboxclient.app',
-    info_plist={
-        'CFBundleDisplayName': 'SingBox Client',
-        'CFBundleShortVersionString': '1.0',
-        'NSHighResolutionCapable': True,
-    },
-)
+if sys.platform == 'darwin':
+    app = BUNDLE(
+        coll,
+        name='SingBoxClient.app',
+        icon='assets/AppIcon.icns',
+        bundle_identifier='local.singboxclient.app',
+        info_plist={
+            'CFBundleDisplayName': 'SingBox Client',
+            'CFBundleShortVersionString': '1.0',
+            'NSHighResolutionCapable': True,
+        },
+    )

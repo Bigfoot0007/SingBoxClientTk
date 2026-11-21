@@ -45,6 +45,17 @@ DIRECT_DARK = ["#0ca30c", "#3fbf3f", "#087a08", "#78d278", "#055c05"]
 
 
 def _system_is_dark() -> bool:
+    if sys.platform == "win32":
+        try:
+            import winreg
+            with winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion"
+                    r"\Themes\Personalize") as key:
+                light, _ = winreg.QueryValueEx(key, "AppsUseLightTheme")
+            return not light
+        except OSError:
+            return False
     if sys.platform != "darwin":
         return False
     try:

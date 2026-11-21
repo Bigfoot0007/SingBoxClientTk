@@ -47,6 +47,15 @@ class EnvChecker:
             candidates = ["/opt/homebrew/bin/sing-box", "/usr/local/bin/sing-box"]
         elif SYSTEM == "Linux":
             candidates = ["/usr/local/bin/sing-box"]
+        elif SYSTEM == "Windows":
+            local = os.environ.get("LOCALAPPDATA", "")
+            user = os.environ.get("USERPROFILE", "")
+            candidates = [
+                os.path.join(local, "Microsoft", "WinGet", "Links",
+                             "sing-box.exe"),
+                os.path.join(user, "scoop", "shims", "sing-box.exe"),
+                r"C:\ProgramData\chocolatey\bin\sing-box.exe",
+            ]
         for p in candidates:
             if os.path.exists(p):
                 return p
@@ -103,7 +112,10 @@ class EnvChecker:
         if SYSTEM == "Darwin":
             return "brew install sing-box"
         elif SYSTEM == "Windows":
-            return "下载 sing-box.exe: https://github.com/SagerNet/sing-box/releases"
+            return ("下载 sing-box.exe 并加入 PATH:\n"
+                    "https://github.com/SagerNet/sing-box/releases\n"
+                    "(解压后把 sing-box.exe 所在目录加入 PATH;"
+                    "scoop / winget 安装的会被自动找到)")
         elif SYSTEM == "Linux":
             return """curl -L https://github.com/SagerNet/sing-box/releases/latest/download/sing-box-linux-amd64.tar.gz -o /tmp/sing-box.tar.gz
 tar -xzf /tmp/sing-box.tar.gz -C /tmp

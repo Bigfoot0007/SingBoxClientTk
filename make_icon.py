@@ -112,19 +112,64 @@ def render():
     return rows
 
 
-def write_png(path, rows):
+def png_bytes(rows, size=N):
     raw = b"".join(b"\x00" + r for r in rows)
 
     def chunk(tag, data):
         return (struct.pack(">I", len(data)) + tag + data
                 + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
 
-    png = (b"\x89PNG\r\n\x1a\n"
-           + chunk(b"IHDR", struct.pack(">IIBBBBB", N, N, 8, 6, 0, 0, 0))
-           + chunk(b"IDAT", zlib.compress(raw, 9))
-           + chunk(b"IEND", b""))
+    return (b"\x89PNG\r\n\x1a\n"
+            + chunk(b"IHDR", struct.pack(">IIBBBBB", size, size, 8, 6,
+                                         0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(raw, 9))
+            + chunk(b"IEND", b""))
+
+
+def write_png(path, rows):
     with open(path, "wb") as f:
-        f.write(png)
+        f.write(png_bytes(rows))
+
+
+def downscale(rows, side):
+    """Box-average the N×N RGBA rows down to `side`×`side` (alpha-weighted
+    so antialiased edges don't darken)."""
+    f = N // side
+    out = []
+    for oy in range(side):
+        row = bytearray()
+        for ox in range(side):
+            sa = sr = sg = sb = 0
+            for dy in range(f):
+                src = rows[oy * f + dy]
+                for dx in range(f):
+                    i = (ox * f + dx) * 4
+                    a = src[i + 3]
+                    sa += a
+                    sr += src[i] * a
+                    sg += src[i + 1] * a
+                    sb += src[i + 2] * a
+            if sa == 0:
+                row += b"\x00\x00\x00\x00"
+            else:
+                row += bytes((round(sr / sa), round(sg / sa),
+                              round(sb / sa), min(255, round(sa / (f * f)))))
+        out.append(bytes(row))
+    return out
+
+
+def write_ico(path, entries):
+    """entries: [(side, png_bytes), ...] — PNG-embedded ICO (Vista+)."""
+    out = struct.pack("<HHH", 0, 1, len(entries))
+    off = 6 + 16 * len(entries)
+    for side, png in entries:
+        s = 0 if side >= 256 else side   # 256 is encoded as 0
+        out += struct.pack("<BBBBHHII", s, s, 0, 0, 1, 32, len(png), off)
+        off += len(png)
+    for _, png in entries:
+        out += png
+    with open(path, "wb") as f:
+        f.write(out)
 
 
 def main():
@@ -132,8 +177,15 @@ def main():
     assets = os.path.join(here, "assets")
     os.makedirs(assets, exist_ok=True)
     master = os.path.join(assets, "AppIcon.png")
-    write_png(master, render())
+    rows = render()
+    write_png(master, rows)
     print("master:", master)
+
+    ico = os.path.join(assets, "AppIcon.ico")
+    entries = [(s, png_bytes(downscale(rows, s), s))
+               for s in (16, 32, 48, 256)]
+    write_ico(ico, entries)
+    print("ico:", ico)
 
     if sys.platform != "darwin":
         print("iconutil is macOS-only; PNG master only")
