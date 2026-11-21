@@ -484,7 +484,7 @@ class App:
         for i, node in enumerate(self.nodes):
             node_id = node.get("id", f"node_{i}")
             info = f"{node.get('server', '?')}:{node.get('port', '?')}"
-            icon = "🟢" if node_id == self.selected_node_id else "⚪"
+            icon = self._node_icon(node_id)
             lat = lat_of(node, i)
             self.node_tree.insert("", "end", iid=node_id,
                                   text=icon, tags=self._node_tags(node_id),
@@ -513,12 +513,22 @@ class App:
             tags.append("bad")
         return tuple(tags)
 
-    def _on_select(self, event):
-        """Handle node selection — repaint the status icon immediately.
+    def _node_icon(self, node_id) -> str:
+        """Green dot = the node the live instance serves; while nothing
+        is connected, the green marks the DEFAULT node (the one "connect"
+        would use). Selection alone never turns a dot green when a
+        connection is live."""
+        if self.running:
+            return "🟢" if node_id == self._connected_id else "⚪"
+        return "🟢" if node_id == self.selected_node_id else "⚪"
 
-        Only the two affected rows are touched (no tree rebuild, which
-        would clear the selection highlight).
-        """
+    def _repaint_icons(self):
+        for iid in self.node_tree.get_children():
+            self.node_tree.item(iid, text=self._node_icon(iid))
+
+    def _on_select(self, event):
+        """Single click: only the row's selected background moves
+        (connection and green dot untouched while connected)."""
         selection = self.node_tree.selection()
         if not selection:
             return
@@ -527,15 +537,42 @@ class App:
             return
         old_id = self.selected_node_id
         self.selected_node_id = new_id
-        if old_id and self.node_tree.exists(old_id):
-            self.node_tree.item(old_id, text="⚪", tags=self._node_tags(old_id))
-        if self.node_tree.exists(new_id):
-            self.node_tree.item(new_id, text="🟢", tags=self._node_tags(new_id))
+        for iid in (old_id, new_id):
+            if iid and self.node_tree.exists(iid):
+                self.node_tree.item(iid, tags=self._node_tags(iid))
+        if not self.running:
+            self._repaint_icons()  # no live link: green follows the default
         self._save_settings()
 
     def _on_toggle(self, event):
-        """Double-click to toggle connection."""
-        self._toggle_connection()
+        """Double-click on a node row:
+
+        - nothing connected          -> connect to that node
+        - connected to another node  -> disconnect, then connect to it
+        - connected to this very node-> disconnect (toggle off)
+        The green dot lands on the new node only once the connection is
+        actually up (_on_connected repaints).
+        """
+        row = self.node_tree.identify_row(event.y)
+        if not row:
+            return
+        if self.running and self._connected_id == row:
+            self._do_stop()
+            return
+        was_running = self.running
+        self.node_tree.selection_set(row)
+        # <<TreeviewSelect>> is queued, not synchronous — apply the
+        # selection right now so selected_node_id is already current.
+        self._on_select(None)
+        if self.selected_node_id != row:
+            return  # selection rejected (stale row?)
+        if was_running:
+            # _do_stop's _on_disconnected lands via after(0) — queue the
+            # new start after it so the disconnect can't clobber state.
+            self._do_stop()
+            self.root.after(100, self._do_start)
+        else:
+            self._do_start()
 
     def _show_context_menu(self, event):
         """Show context menu on right-click."""
@@ -898,9 +935,8 @@ class App:
         threading.Thread(target=run_singbox, daemon=True).start()
 
     def _do_stop(self):
-        """Stop sing-box and disable proxy."""
+        """Stop sing-box; _on_disconnected restores the proxy (once)."""
         self.singbox.stop()
-        ProxyManager.clear_proxy()
         self.root.after(0, self._on_disconnected)
 
     def _autoconnect(self):
@@ -938,6 +974,7 @@ class App:
             text=f"● 已连接 · {name}" if name else "● 已连接",
             style="Status.On.TLabel")
         self.connect_btn.config(text="● 断开", style="Disconnect.TButton")
+        self._repaint_icons()  # green now marks the live node only
         if self.monitor is None:
             self.monitor = TrafficMonitor(self.stats_port, self.stats_secret)
             self.monitor.start()
@@ -948,9 +985,15 @@ class App:
             self._lat_timer = self.root.after(2000, self._measure_connected)
 
     def _on_disconnected(self):
+        was_running = self.running
         self.running = False
         self._was_connected = False
         self._save_settings()
+        # Restore the proxy here rather than in _do_stop: this path also
+        # fires when sing-box dies on its own, and clear_proxy consumes
+        # its snapshot — so it must run exactly once per cycle.
+        if was_running:
+            ProxyManager.clear_proxy()
         self.status_label.config(text="● 未连接", style="Status.Off.TLabel")
         self.connect_btn.config(text="▶ 连接", style="TButton")
         if self.monitor is not None:
@@ -961,6 +1004,7 @@ class App:
             self.root.after_cancel(self._lat_timer)
             self._lat_timer = None
         self._connected_id = None
+        self._repaint_icons()  # green falls back to the default node
         self.caption_var.set("未连接 — 无流量采样")
 
     def _update_status(self):
