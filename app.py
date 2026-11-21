@@ -920,11 +920,23 @@ class App:
         self._save_settings()
         self.root.destroy()
 
+    def _connected_name(self) -> str:
+        """Display name of the node the live instance actually serves."""
+        node = next((n for n in self.nodes
+                     if n.get("id") == self._connected_id), None)
+        if node is None:  # instance adopted from outside — best guess
+            node = next((n for n in self.nodes
+                         if n.get("id") == self.selected_node_id), None)
+        return node.get("name", "") if node else ""
+
     def _on_connected(self):
         self.running = True
         self._was_connected = True
         self._save_settings()
-        self.status_label.config(text="● 已连接", style="Status.On.TLabel")
+        name = self._connected_name()
+        self.status_label.config(
+            text=f"● 已连接 · {name}" if name else "● 已连接",
+            style="Status.On.TLabel")
         self.connect_btn.config(text="● 断开", style="Disconnect.TButton")
         if self.monitor is None:
             self.monitor = TrafficMonitor(self.stats_port, self.stats_secret)
@@ -957,6 +969,10 @@ class App:
             self._on_connected()
         elif not self.singbox.is_running and self.running:
             self._on_disconnected()
+        if self.running:  # keep the node name fresh (edits / adoption)
+            name = self._connected_name()
+            self.status_label.config(
+                text=f"● 已连接 · {name}" if name else "● 已连接")
         self._refresh_sys_status()
         self.root.after(3000, self._update_status)
 
