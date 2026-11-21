@@ -4,13 +4,33 @@
 
 ## 依赖
 
-- Python 3.8+
-- sing-box（通过 Homebrew 安装）
-  ```bash
-  brew install sing-box
-  ```
+GUI 本身 **零 pip 依赖**，只需要 Python + sing-box 内核（建议 1.12+，应用按新版
+`rule_set`/DNS 格式生成配置）。首次启动时应用会自动做环境检查，缺什么会弹安装指引。
 
-**无其他依赖！** tkinter 随 Python 自带，无需 pip install。
+### macOS
+
+- Python 3.8+（tkinter 自带）
+- sing-box：`brew install sing-box`（应用内可一键打开终端执行）
+
+### Windows
+
+- Python 3.8+（python.org 安装包自带 tkinter）
+- sing-box：从 [Releases](https://github.com/SagerNet/sing-box/releases) 下载
+  `sing-box-<版本>-windows-amd64.zip`，解压出 `sing-box.exe` 放进任一 PATH 目录；
+  用 scoop / chocolatey / winget 装的会被自动找到
+
+### Linux
+
+- Python 3.8+ 和 tkinter（多数发行版需单独装）：
+  Debian/Ubuntu `sudo apt install python3-tk`，Fedora `sudo dnf install python3-tkinter`
+- sing-box（amd64 示例）：
+  ```bash
+  ver=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep -oP '"tag_name":\s*"v\K[^"]+')
+  curl -L "https://github.com/SagerNet/sing-box/releases/download/v$ver/sing-box-$ver-linux-amd64.tar.gz" -o /tmp/sing-box.tar.gz
+  tar -xzf /tmp/sing-box.tar.gz -C /tmp
+  sudo mv "/tmp/sing-box-$ver-linux-amd64/sing-box" /usr/local/bin/
+  sudo chmod +x /usr/local/bin/sing-box
+  ```
 
 ## 运行
 
@@ -37,7 +57,7 @@ SingBoxClientTk/
 ├── core/
 │   ├── singbox.py          # sing-box 进程管理
 │   ├── config.py           # 配置生成（含路由规则）
-│   └── proxy.py            # macOS 系统代理设置
+│   └── proxy.py            # 系统代理设置（macOS / Windows / Linux）
 └── README.md
 ```
 
@@ -54,3 +74,4 @@ SingBoxClientTk/
 节点配置保存在：
 - macOS: `~/Library/Application Support/SingBoxClient/nodes.json`
 - Linux: `~/.config/SingBoxClient/nodes.json`
+- Windows: `%APPDATA%\SingBoxClient\nodes.json`
