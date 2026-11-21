@@ -84,5 +84,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" release-files/* \
+            -R "$GITHUB_REPOSITORY" \
             --title "SingBox Client $GITHUB_REF_NAME" \
             --generate-notes
