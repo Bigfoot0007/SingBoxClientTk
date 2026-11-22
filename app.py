@@ -1251,7 +1251,7 @@ class App:
                                    text="访问主机汇总(按域归组)", padding=6)
         pie_frame.pack(fill="x")
         self.pie_canvas = tk.Canvas(pie_frame, width=self.ADV_W - 40,
-                                    height=210, bg=th["surface"],
+                                    height=244, bg=th["surface"],
                                     highlightthickness=1,
                                     highlightbackground=th["grid"])
         self.pie_canvas.pack(fill="x")
@@ -1334,7 +1334,8 @@ class App:
             self._draw_pie()
         self._adv_poll_timer = self.root.after(700, self._adv_poll)
 
-    MAX_SLICES = 7  # + "其他" fold → at most 8 pie slices (palette slots)
+    MAX_SLICES = 9    # hard cap on named slices (legend rows / palette)
+    FOLD_SHARE = 0.03  # routes under 3% fold into "其他"
 
     def _draw_pie(self):
         if not self.advanced_open or self.adv_monitor is None:
@@ -1367,9 +1368,14 @@ class App:
                           font=("Helvetica", 10), text=hint)
             return
 
+        # dynamic fold: every route with a >= FOLD_SHARE share gets its
+        # own slice (up to MAX_SLICES); the tail folds into gray "其他".
         items = sorted(route_counts.items(), key=lambda kv: -kv[1])
-        slices = items[:self.MAX_SLICES]
-        rest = items[self.MAX_SLICES:]
+        keep = [it for it in items if it[1] / total >= self.FOLD_SHARE]
+        if not keep:
+            keep = items[:3]  # tiny sample: never show a gray-only pie
+        slices = keep[:self.MAX_SLICES]
+        rest = items[len(slices):]
         if rest:
             slices.append((("其他", ""), sum(v for _, v in rest)))
             self._pie_rest = rest
