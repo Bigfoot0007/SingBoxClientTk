@@ -4,6 +4,8 @@ import os
 import signal
 import platform
 
+from .nogui import nogui_kwargs
+
 
 class SingBoxManager:
     """Start, stop, and restart sing-box."""
@@ -32,7 +34,8 @@ class SingBoxManager:
         if self._version is None:
             try:
                 r = subprocess.run([self.binary, "version"],
-                                   capture_output=True, text=True, timeout=5)
+                                   capture_output=True, text=True,
+                                   timeout=5, **nogui_kwargs())
                 if r.returncode == 0:
                     line = r.stdout.strip().splitlines()[0]
                     self._version = line.replace("sing-box version", "").strip()
@@ -71,7 +74,7 @@ class SingBoxManager:
         cmd += ["-c", config_path]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
-                                  timeout=30)
+                                  timeout=30, **nogui_kwargs())
             if proc.returncode == 0:
                 return True, ""
             msg = (proc.stderr or proc.stdout or "").strip()
@@ -94,12 +97,11 @@ class SingBoxManager:
         # Capture stdout/stderr so startup errors (e.g. reality failure,
         # bad rule-set download) can be surfaced in the UI.
         self._log_file = open(self.log_path, "w", encoding="utf-8")
-        kwargs = dict(stdout=self._log_file, stderr=self._log_file)
-        if platform.system() == "Windows":
-            startupinfo = subprocess.STARTUPINFO()
-            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-            startupinfo.wShowWindow = subprocess.SW_HIDE
-            kwargs["startupinfo"] = startupinfo
+        # CREATE_NO_WINDOW beats the old STARTUPINFO/SW_HIDE trick:
+        # hiding still flashes a console for a frame; not allocating one
+        # never shows anything (no-op on macOS/Linux).
+        kwargs = dict(stdout=self._log_file, stderr=self._log_file,
+                      **nogui_kwargs())
         self._process = subprocess.Popen(cmd, **kwargs)
 
         # Remember the PID so a crashed/exited session's orphaned sing-box
@@ -169,10 +171,12 @@ class SingBoxManager:
             try:
                 out = subprocess.run(
                     ["tasklist", "/FI", f"PID eq {pid}", "/NH", "/FO", "CSV"],
-                    capture_output=True, text=True, timeout=5).stdout
+                    capture_output=True, text=True, timeout=5,
+                    **nogui_kwargs()).stdout
                 if "sing-box" in out.lower():
                     subprocess.run(["taskkill", "/PID", str(pid), "/F"],
-                                   capture_output=True, timeout=5)
+                                   capture_output=True, timeout=5,
+                                   **nogui_kwargs())
                     return True
             except Exception:
                 pass

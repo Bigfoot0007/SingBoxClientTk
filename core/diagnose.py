@@ -18,6 +18,7 @@ import time
 import urllib.request
 
 from .config import ConfigGenerator
+from .nogui import nogui_kwargs
 
 
 class NodeDiagnostics:
@@ -57,7 +58,7 @@ class NodeDiagnostics:
         logf = open(log_path, "w", encoding="utf-8")
         proc = subprocess.Popen(
             [self.binary, "-D", self.workdir, "run", "-c", cfg_path],
-            stdout=logf, stderr=logf)
+            stdout=logf, stderr=logf, **nogui_kwargs())
         try:
             time.sleep(2)
             if proc.poll() is not None:

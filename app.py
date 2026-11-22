@@ -24,6 +24,7 @@ from core.check import EnvChecker, EnvInstallDialog
 from core.diagnose import NodeDiagnostics
 from core.stats import TrafficMonitor
 from core.accesslog import AccessLogMonitor, CAT_LABELS
+from core.nogui import nogui_kwargs
 
 
 # ── traffic chart theming (validated 2-series palette: blue=down, orange=up) ──
@@ -1600,7 +1601,7 @@ def _acquire_single_instance(base_path):
             if subprocess.run(
                     ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
                     capture_output=True,
-                    text=True).stdout.strip():
+                    text=True, **nogui_kwargs()).stdout.strip():
                 return None
         except (OSError, ValueError):
             pass

@@ -6,6 +6,8 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from .nogui import nogui_kwargs
+
 SYSTEM = platform.system()
 PYTHON_VERSION = sys.version_info
 
@@ -68,7 +70,8 @@ class EnvChecker:
         try:
             proc = subprocess.run(
                 [EnvChecker._singbox_binary(), "version"],
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=5,
+                **nogui_kwargs()
             )
             if proc.returncode == 0:
                 version_line = proc.stdout.strip().split("\n")[0]
