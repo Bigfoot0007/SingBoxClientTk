@@ -23,7 +23,7 @@ from core.proxy import ProxyManager
 from core.check import EnvChecker, EnvInstallDialog
 from core.diagnose import NodeDiagnostics
 from core.stats import TrafficMonitor
-from core.accesslog import AccessLogMonitor
+from core.accesslog import AccessLogMonitor, CAT_LABELS
 
 
 # ── traffic chart theming (validated 2-series palette: blue=down, orange=up) ──
@@ -241,6 +241,9 @@ class App:
         self.adv_frame = None
         self.adv_monitor = None
         self._adv_poll_timer = None
+        self._pie_tip = None       # hover tooltip for pie slices
+        self._pie_meta = None      # (cx, cy, r, [(key, v, acc, span)])
+        self._pie_rest = None      # folded (domain, route) counts
 
         # State
         self.nodes = self._load_nodes()
@@ -1244,17 +1247,23 @@ class App:
         self.adv_frame = ttk.Frame(self.paned, padding=(8, 0, 4, 0))
         self.paned.add(self.adv_frame, weight=1)
 
-        pie_frame = ttk.LabelFrame(self.adv_frame, text="访问主机汇总",
-                                   padding=6)
+        pie_frame = ttk.LabelFrame(self.adv_frame,
+                                   text="访问主机汇总(按域归组)", padding=6)
         pie_frame.pack(fill="x")
         self.pie_canvas = tk.Canvas(pie_frame, width=self.ADV_W - 40,
                                     height=210, bg=th["surface"],
                                     highlightthickness=1,
                                     highlightbackground=th["grid"])
         self.pie_canvas.pack(fill="x")
+        self.pie_canvas.bind("<Motion>", self._pie_motion)
+        self.pie_canvas.bind("<1>", self._pie_motion)
+        self.pie_canvas.bind("<Leave>", lambda e: self._hide_pie_tip())
         self.adv_count_var = tk.StringVar(value="")
         ttk.Label(pie_frame, textvariable=self.adv_count_var,
                   style="Status.TLabel").pack(anchor="w", pady=(2, 0))
+        self.adv_stat_var = tk.StringVar(value="")
+        ttk.Label(pie_frame, textvariable=self.adv_stat_var,
+                  style="Status.TLabel").pack(anchor="w")
 
         log_frame = ttk.LabelFrame(self.adv_frame, text="访问日志", padding=6)
         log_frame.pack(fill="both", expand=True, pady=(8, 8))
@@ -1288,6 +1297,10 @@ class App:
     def _close_advanced(self):
         self.advanced_open = False
         self.adv_btn.config(text="🔬 高级")
+        if self._pie_tip is not None and self._pie_tip.winfo_exists():
+            self._pie_tip.destroy()
+        self._pie_tip = None
+        self._pie_meta = self._pie_rest = None
         if self._adv_poll_timer is not None:
             self.root.after_cancel(self._adv_poll_timer)
             self._adv_poll_timer = None
@@ -1330,15 +1343,23 @@ class App:
         th = self.theme
         c.delete("all")
         w, h = c.winfo_width(), c.winfo_height()
+        self._pie_meta = self._pie_rest = None
         if w < 60:
             return
-        # slices keyed by (host, outbound): colors follow the ROUTE
-        # (direct = green family, everything proxied = red family)
-        route_counts = self.adv_monitor.route_counts()
-        counts = self.adv_monitor.counts()
+        # slices keyed by (registrable domain, outbound): subdomains
+        # collapse (googlevideo's 12 CDN nodes -> one slice); colors
+        # follow the ROUTE (direct = green, proxied = red)
+        mon = self.adv_monitor
+        route_counts = mon.domain_route_counts()
+        counts = mon.counts()
         total = sum(route_counts.values())
+        n_proxy = sum(v for (_d, out), v in route_counts.items()
+                      if out != "direct")
         self.adv_count_var.set(
-            f"共 {total} 次连接 · {len(counts)} 个主机")
+            f"共 {total} 次连接 · {len(counts)} 主机 · "
+            f"{len(route_counts)} 域路由 · 代理{n_proxy}/直连"
+            f"{total - n_proxy}")
+        self._update_stat_line(mon, total)
         if not total:
             hint = ("未连接 — 点“连接”后开始记录"
                     if not self.running else "暂无访问记录")
@@ -1351,6 +1372,7 @@ class App:
         rest = items[self.MAX_SLICES:]
         if rest:
             slices.append((("其他", ""), sum(v for _, v in rest)))
+            self._pie_rest = rest
 
         def color_for(key, idx_p, idx_d):
             host, out = key
@@ -1365,6 +1387,8 @@ class App:
         r = min(h / 2 - 10, 72)
         cx, cy = r + 22, h / 2
         ang = 90.0  # start at 12 o'clock, sweep clockwise
+        acc = 0.0   # clockwise offset from 12, for hover hit-tests
+        meta = []
         ip = idg = 0
         for key, v in slices:
             span = 360.0 * v / total
@@ -1372,7 +1396,10 @@ class App:
             c.create_arc(cx - r, cy - r, cx + r, cy + r, start=ang,
                          extent=-span, fill=col, outline=th["surface"],
                          width=2, style="pie")
+            meta.append((key, v, acc, span))
             ang -= span
+            acc += span
+        self._pie_meta = (cx, cy, r, meta)
 
         # legend: host + route + count + share (identity never rides
         # color alone — the 代理/直连 word names what the hue encodes)
@@ -1387,13 +1414,95 @@ class App:
             c.create_rectangle(lx, y - 4, lx + 10, y + 6, fill=col,
                                outline="")
             host, out = key
-            name = host if len(host) <= 18 else host[:17] + "…"
+            if host == "其他":
+                name = f"其他 · {len(self._pie_rest or [])} 条路由"
+            else:
+                name = host if len(host) <= 18 else host[:17] + "…"
             route = "" if host == "其他" else (" · 代理" if out != "direct"
                                                else " · 直连")
             c.create_text(lx + 15, y + 1, anchor="w", fill=th["secondary"],
                           font=("Helvetica", 9),
                           text=f"{name}{route}  {v} ({v / total * 100:.0f}%)")
             row += 1
+
+    def _update_stat_line(self, mon, total):
+        """Auto-classified traffic mix line (rule estimate) + the
+        bare-IP sentinel, which is a hard count, not a guess."""
+        if not total:
+            self.adv_stat_var.set("")
+            return
+        cats = mon.category_counts()
+        parts = []
+        for key, label in CAT_LABELS:
+            n = cats.get(key, 0)
+            if n:
+                parts.append(f"{label} {n / total * 100:.0f}%")
+        ip = sum(mon.ip_route_counts().values())
+        tail = f"⚠ IP直连 {ip}" if ip else "无IP直连"
+        self.adv_stat_var.set("📊 按规则估计 · " + " · ".join(parts)
+                              + f" · {tail}")
+
+    # ── pie hover: slice → folded member breakdown ────────────────────
+
+    def _slice_at(self, x, y):
+        meta = self._pie_meta
+        if not meta:
+            return None
+        cx, cy, r, slices = meta
+        dx, dy = x - cx, y - cy
+        if dx * dx + dy * dy > r * r:
+            return None
+        a = math.degrees(math.atan2(dx, -dy)) % 360.0  # clockwise from 12
+        for key, v, acc, span in slices:
+            if acc <= a < acc + span:
+                return (key, v)
+        return None
+
+    def _pie_tip_text(self, key, v):
+        mon = self.adv_monitor
+        lines = []
+        if key[0] == "其他":
+            for (dom, out), n in (self._pie_rest or [])[:6]:
+                lines.append(f"{dom} · "
+                             f"{'代理' if out != 'direct' else '直连'} {n}")
+            left = len(self._pie_rest or []) - len(lines)
+            if left > 0:
+                lines.append(f"… 共 {len(self._pie_rest)} 条路由")
+        else:
+            members = sorted(mon.domain_members(key[0]).items(),
+                             key=lambda kv: -kv[1])
+            for host, n in members[:6]:
+                lines.append(f"{host} {n}")
+            if len(members) > 6:
+                lines.append(f"… 共 {len(members)} 个主机")
+        total = sum(mon.domain_route_counts().values())
+        head = (f"{key[0]} · 共{v}次 ({v / max(total, 1) * 100:.1f}%)")
+        return "\n".join([head] + lines)
+
+    def _pie_motion(self, event):
+        hit = self._slice_at(event.x, event.y)
+        if not hit:
+            self._hide_pie_tip()
+            return
+        tip = self._pie_tip
+        if tip is None or not tip.winfo_exists():
+            tip = self._pie_tip = tk.Toplevel(self.root)
+            tip.wm_overrideredirect(True)
+            tip.wm_attributes("-topmost", True)
+            th = self.theme
+            tip._lbl = tk.Label(tip, justify="left", relief="solid",
+                                bd=1, bg=th["surface"], fg=th["ink"],
+                                font=("Menlo", 9), padx=6, pady=4)
+            tip._lbl.pack()
+        text = self._pie_tip_text(*hit)
+        if tip._lbl.cget("text") != text:
+            tip._lbl.config(text=text)
+        tip.wm_geometry(f"+{event.x_root + 14}+{event.y_root + 12}")
+        tip.deiconify()
+
+    def _hide_pie_tip(self):
+        if self._pie_tip is not None and self._pie_tip.winfo_exists():
+            self._pie_tip.withdraw()
 
     # ── mixed proxy port: change = validate + persist (+ live re-apply) ──
 

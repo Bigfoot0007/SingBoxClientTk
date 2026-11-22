@@ -40,6 +40,64 @@ def _host_of(dest: str) -> str:
     return host if sep and tail.isdigit() else dest
 
 
+_IP_RE = re.compile(r"^(\d{1,3}(\.\d{1,3}){3}|[0-9a-fA-F:]*:[0-9a-fA-F:]*)$")
+
+
+def is_ip_literal(host: str) -> bool:
+    """Bare-IP destinations (no DNS name) — malware beaconing lands here,
+    so the UI keeps this as a hard safety count."""
+    return bool(_IP_RE.match(host))
+
+
+# registrable-domain grouping: collapse subdomains (12 googlevideo CDN
+# nodes -> one slice). "co.uk"-style second-levels handled via a
+# 3-label rule when the last label is a 2-letter ccTLD.
+_SECOND_LEVEL = ("com", "net", "org", "edu", "gov", "co", "ac", "govt")
+
+
+def registrable_domain(host: str) -> str:
+    if is_ip_literal(host):
+        return host
+    labels = host.split(".")
+    if len(labels) <= 2:
+        return host
+    if len(labels[-1]) == 2 and labels[-2] in _SECOND_LEVEL:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+# Rule-based traffic classes (estimates — the UI labels them 按规则估计).
+# Substring matches against the lowercased host; first hit wins, order:
+# telemetry -> system -> content -> app. Tune freely.
+_TELEMETRY_KEYS = ("telemetry", "collector", "events.data", "countly",
+                   "badjs", "gator", "sentry", "crash", "analytics",
+                   "track", "metrics.", "rdelivery", "report", "log.")
+_SYSTEM_KEYS = ("ocsp", "portal-detection", "captive", "weatherkit",
+                "init.itunes", "xp.apple", "push.apple", "sync.services",
+                "optimizationguide", "safebrowsing", "settings.services",
+                "token.services", "update", "setup.icloud", "check.")
+_CONTENT_KEYS = ("googlevideo", "cdn", "static", "assets", "content.",
+                 "download.", "play.", "img.", "pic.")
+CAT_LABELS = (("telemetry", "遥测/回传"), ("system", "系统后台"),
+              ("content", "内容/CDN"), ("app", "应用使用"))
+
+
+def classify(host: str) -> str:
+    h = host.lower()
+    if is_ip_literal(h):
+        return "app"  # counted separately by ip_route_counts anyway
+    for k in _TELEMETRY_KEYS:
+        if k in h:
+            return "telemetry"
+    for k in _SYSTEM_KEYS:
+        if k in h:
+            return "system"
+    for k in _CONTENT_KEYS:
+        if k in h:
+            return "content"
+    return "app"
+
+
 class AccessEvent:
     __slots__ = ("line", "host", "out")
 
@@ -57,6 +115,10 @@ class AccessLogMonitor:
         self._events = []       # drained by the UI
         self._counts = {}       # host -> connection count
         self._route_counts = {}  # (host, outbound) -> count
+        self._dom_route = {}    # (registrable domain, outbound) -> count
+        self._dom_members = {}  # domain -> {host: count}
+        self._cats = {}         # classify() bucket -> count
+        self._ip_routes = {}    # bare-IP destination, outbound -> count
         self._conns = OrderedDict()  # id -> partial record (bounded)
         self.total = 0
         self._thread = None
@@ -84,6 +146,23 @@ class AccessLogMonitor:
     def route_counts(self) -> dict:
         with self._lock:
             return dict(self._route_counts)
+
+    def domain_route_counts(self) -> dict:
+        with self._lock:
+            return dict(self._dom_route)
+
+    def domain_members(self, domain: str) -> dict:
+        with self._lock:
+            return dict(self._dom_members.get(domain, {}))
+
+    def category_counts(self) -> dict:
+        with self._lock:
+            return dict(self._cats)
+
+    def ip_route_counts(self) -> dict:
+        """Bare-IP destinations per outbound — the safety sentinel."""
+        with self._lock:
+            return dict(self._ip_routes)
 
     # ── tail loop ─────────────────────────────────────────────────────
 
@@ -155,6 +234,16 @@ class AccessLogMonitor:
                 self._counts[host] = self._counts.get(host, 0) + 1
                 rk = (host, tag)
                 self._route_counts[rk] = self._route_counts.get(rk, 0) + 1
+                dom = registrable_domain(host)
+                dk = (dom, tag)
+                self._dom_route[dk] = self._dom_route.get(dk, 0) + 1
+                self._dom_members.setdefault(dom, {})
+                self._dom_members[dom][host] = \
+                    self._dom_members[dom].get(host, 0) + 1
+                cat = classify(host)
+                self._cats[cat] = self._cats.get(cat, 0) + 1
+                if is_ip_literal(host):
+                    self._ip_routes[tag] = self._ip_routes.get(tag, 0) + 1
                 self.total += 1
                 self._events.append(AccessEvent(line, host, tag))
                 self._conns.pop(cid, None)
