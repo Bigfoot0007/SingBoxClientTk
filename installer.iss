@@ -4,7 +4,7 @@
 
 [Setup]
 AppName=SingBox Client
-AppVersion=1.0
+AppVersion=1.1.0
 AppPublisher=local
 DefaultDirName={autopf}\SingBoxClient
 UninstallDisplayIcon={app}\SingBoxClient.exe
