@@ -49,12 +49,15 @@ jobs:
 
       - name: Fetch bundled sing-box (Windows)
         if: runner.os == 'Windows'
+        env:
+          SINGBOX_VER: "1.14.4"   # keep in sync with the step above + core/bundled_bin.py
         run: |
+          $v = $env:SINGBOX_VER
           $ProgressPreference = 'SilentlyContinue'
-          Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-windows-amd64.zip" -OutFile sb.zip
+          Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v$v/sing-box-$v-windows-amd64.zip" -OutFile sb.zip
           Expand-Archive sb.zip -DestinationPath sb
           New-Item -ItemType Directory -Force assets | Out-Null
-          Copy-Item sb/sing-box-1.14.4-windows-amd64/sing-box.exe assets/sing-box.exe
+          Copy-Item "sb/sing-box-$v-windows-amd64/sing-box.exe" assets/sing-box.exe
           assets/sing-box.exe version
 
       - name: Build with PyInstaller
