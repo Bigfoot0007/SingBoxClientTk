@@ -86,13 +86,13 @@ def _fmt_rate_tick(bps: float) -> str:
 
 
 def _nice_max(v: float) -> float:
+    """Round vmax up to 4 × a power of two, so the quarter ticks
+    (ymax/4 · i) print as clean numbers under _fmt_rate_tick's 1024-based
+    formatting. Decimal rounding (e.g. 5e5) produced odd labels like
+    122/244/366/488 K because 500000/1024 = 488.3."""
     if v <= 0:
         return 1024.0
-    e = math.floor(math.log10(v))
-    for m in (1, 2, 2.5, 5, 10):
-        if m * 10 ** e >= v:
-            return m * 10 ** e
-    return 10 ** (e + 1)
+    return 4 * 2 ** math.ceil(math.log2(v / 4))
 
 
 def _blend(fg: str, bg: str, bg_weight: float) -> str:
@@ -533,9 +533,13 @@ class App:
         is connected, the green marks the DEFAULT node (the one "connect"
         would use). Selection alone never turns a dot green when a
         connection is live."""
+        # Windows Tk 8.6 renders color emoji monochrome in Treeview —
+        # 🟢/⚪ become indistinguishable grey rings. Fall back to
+        # filled/hollow shapes, which read correctly without colour.
+        on, off = ("●", "○") if sys.platform == "win32" else ("🟢", "⚪")
         if self.running:
-            return "🟢" if node_id == self._connected_id else "⚪"
-        return "🟢" if node_id == self.selected_node_id else "⚪"
+            return on if node_id == self._connected_id else off
+        return on if node_id == self.selected_node_id else off
 
     def _repaint_icons(self):
         for iid in self.node_tree.get_children():
