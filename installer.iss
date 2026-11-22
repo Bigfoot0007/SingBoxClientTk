@@ -4,9 +4,9 @@
 
 ; Version comes from CI (ISCC /DAppVersion=x.y.z, from the git tag);
 ; manual builds default to "dev".
-!ifndef AppVersion
+#ifndef AppVersion
   #define AppVersion "dev"
-!endif
+#endif
 
 [Setup]
 AppName=SingBox Client
