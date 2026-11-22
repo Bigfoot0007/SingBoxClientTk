@@ -16,6 +16,12 @@ import sys
 SINGBOX_VERSION = "1.14.4"  # bump together with core/config.py's contract
 BIN_NAME = "sing-box.exe" if sys.platform == "win32" else "sing-box"
 
+# Bootstrap rule-sets (official compiled .srs, committed under assets/).
+# A fresh install with no network can still boot GEO routing: sing-box
+# loads these via `initial_path`, then keeps them fresh remotely on its
+# regular update interval once reachable (persisted in cache.db).
+RULE_SETS = ("geoip-cn.srs", "geosite-cn.srs")
+
 
 def bundled_source() -> str:
     """Bundled binary inside the app bundle (PyInstaller _MEIPASS) or,
@@ -59,3 +65,36 @@ def ensure_bundled(workdir: str) -> str:
     except OSError:
         # Can't extract (read-only dir / exe in use) — run the bundle copy.
         return src
+
+
+def ensure_rule_sets(workdir: str) -> str:
+    """Copy the bundled .srs bootstrap copies into <workdir>/rule-sets
+    (only where missing — never overwrites; once sing-box's cache.db has
+    a fresher copy the local file is just a cold-start fallback).
+    Returns the directory to reference from configs, or "" when nothing
+    is bundled."""
+    src_dir = None
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass and os.path.isdir(os.path.join(meipass, "assets", "rule-sets")):
+        src_dir = os.path.join(meipass, "assets", "rule-sets")
+    else:
+        dev = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "assets", "rule-sets"))
+        if os.path.isdir(dev):
+            src_dir = dev
+    if not src_dir:
+        return ""
+    dst_dir = os.path.join(workdir, "rule-sets")
+    try:
+        os.makedirs(dst_dir, exist_ok=True)
+        for name in RULE_SETS:
+            dst = os.path.join(dst_dir, name)
+            if not os.path.exists(dst):
+                try:
+                    shutil.copy2(os.path.join(src_dir, name), dst)
+                except OSError:
+                    pass
+    except OSError:
+        return ""
+    return dst_dir

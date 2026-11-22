@@ -10,6 +10,13 @@ _sb = os.path.join('assets', 'sing-box.exe' if sys.platform == 'win32' else 'sin
 if os.path.exists(_sb):
     _datas.append((_sb, 'assets'))
 
+# GEO rule-set bootstrap copies (offline first boot)
+_rs = os.path.join('assets', 'rule-sets')
+if os.path.isdir(_rs):
+    for _f in sorted(os.listdir(_rs)):
+        if _f.endswith('.srs'):
+            _datas.append((os.path.join(_rs, _f), os.path.join('assets', 'rule-sets')))
+
 # Version stamp: CI exports APP_VERSION from the git tag; the UI reads
 # assets/version.json from the bundle at startup ("dev" from source).
 _APP_VER = os.environ.get('APP_VERSION', 'dev')

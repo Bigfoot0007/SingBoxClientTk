@@ -25,6 +25,7 @@ from core.diagnose import NodeDiagnostics
 from core.stats import TrafficMonitor
 from core.accesslog import AccessLogMonitor, CAT_LABELS
 from core.nogui import nogui_kwargs
+from core.bundled_bin import ensure_rule_sets
 
 
 # ── traffic chart theming (validated 2-series palette: blue=down, orange=up) ──
@@ -272,6 +273,9 @@ class App:
         ProxyManager.set_state_dir(workdir)
         self.config_gen = ConfigGenerator()
         self.config_gen.routing_mode = ConfigGenerator.ROUTING_GEO
+        # Bundled .srs bootstrap copies: GEO routing can boot offline on
+        # a fresh install; sing-box refreshes them remotely once online.
+        self.config_gen.rule_set_dir = ensure_rule_sets(workdir)
         self._load_settings()
         self.running = False
 

@@ -27,12 +27,17 @@ class ConfigGenerator:
         self.routing_mode = self.ROUTING_GEO
         self.manual_domains = []
         self.mixed_port = 7890
+        # Directory of bundled .srs bootstrap copies (see bundled_bin).
+        self.rule_set_dir = ""
 
     def generate(self, nodes: list, selected_id: str,
                  routing_mode: str = None,
-                 stats_port: int = None, stats_secret: str = "") -> dict:
+                 stats_port: int = None, stats_secret: str = "",
+                 rule_set_dir: str = None) -> dict:
         if routing_mode:
             self.routing_mode = routing_mode
+        if rule_set_dir is not None:
+            self.rule_set_dir = rule_set_dir
         config = {
             "log": {
                 "disabled": False,
@@ -51,15 +56,21 @@ class ConfigGenerator:
             "dns": self._build_dns(),
             "route": self._build_route()
         }
+        exp = {}
         if stats_port:
             # Clash API: app polls /traffic (1 line of {"up":..,"down":..}
             # JSON per second) for the live chart.
-            config["experimental"] = {
-                "clash_api": {
-                    "external_controller": f"127.0.0.1:{stats_port}",
-                    "secret": stats_secret
-                }
+            exp["clash_api"] = {
+                "external_controller": f"127.0.0.1:{stats_port}",
+                "secret": stats_secret
             }
+        if self.routing_mode == self.ROUTING_GEO:
+            # Persist remote rule-sets in <data dir>/cache.db so a restart
+            # doesn't refetch; pairs with initial_path bootstrap above.
+            # (1.16 direction: cache replaces download_detour entirely.)
+            exp["cache_file"] = {"enabled": True}
+        if exp:
+            config["experimental"] = exp
         return config
 
     def _build_outbounds(self, nodes: list, selected_id: str) -> list:
@@ -157,12 +168,19 @@ class ConfigGenerator:
         }
 
         if self.routing_mode == self.ROUTING_GEO:
-            route["rule_set"] = [
+            rule_sets = [
                 {"tag": "geoip-cn", "type": "remote", "format": "binary",
                  "url": self.GEOIP_URL, "download_detour": "proxy"},
                 {"tag": "geosite-cn", "type": "remote", "format": "binary",
                  "url": self.GEOSITE_URL, "download_detour": "proxy"},
             ]
+            if self.rule_set_dir:
+                # Cold-start bootstrap: load the shipped .srs when no
+                # cached copy exists; remote updates still run normally.
+                for rs in rule_sets:
+                    rs["initial_path"] = os.path.join(
+                        self.rule_set_dir, rs["tag"] + ".srs")
+            route["rule_set"] = rule_sets
             rules.append({"rule_set": "geoip-cn", "outbound": "direct"})
             rules.append({"rule_set": "geosite-cn", "outbound": "direct"})
         elif self.routing_mode == self.ROUTING_MANUAL:
