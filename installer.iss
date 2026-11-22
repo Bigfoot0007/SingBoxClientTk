@@ -2,9 +2,15 @@
 ; PyInstaller COLLECT folder (dist\SingBoxClient\). Run by CI on
 ; windows-latest (Inno Setup is preinstalled there).
 
+; Version comes from CI (ISCC /DAppVersion=x.y.z, from the git tag);
+; manual builds default to "dev".
+!ifndef AppVersion
+  #define AppVersion "dev"
+!endif
+
 [Setup]
 AppName=SingBox Client
-AppVersion=1.1.0
+AppVersion={#AppVersion}
 AppPublisher=local
 DefaultDirName={autopf}\SingBoxClient
 UninstallDisplayIcon={app}\SingBoxClient.exe

@@ -66,6 +66,20 @@ def _system_is_dark() -> bool:
         return False
 
 
+def _app_version() -> str:
+    """Version baked in at build time (CI: git tag -> assets/version.json
+    inside the bundle). Running from source reports 'dev'."""
+    root = getattr(sys, "_MEIPASS", None)
+    if root:
+        try:
+            with open(os.path.join(root, "assets", "version.json"),
+                      encoding="utf-8") as f:
+                return json.load(f).get("version") or "dev"
+        except (OSError, ValueError):
+            pass
+    return "dev"
+
+
 def _fmt_rate(bps: float) -> str:
     if bps < 1024:
         return f"{bps:.0f} B/s"
@@ -218,7 +232,10 @@ class App:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("SingBox Client")
+        self.app_version = _app_version()
+        self.root.title("SingBox Client"
+                        + ("" if self.app_version == "dev"
+                           else f" v{self.app_version}"))
         self.root.geometry("560x680")
         self.root.resizable(True, True)
 
@@ -294,6 +311,8 @@ class App:
     def _setup_styles(self):
         style = ttk.Style()
         style.configure("Title.TLabel", font=("Helvetica", 14, "bold"))
+        style.configure("Muted.TLabel", font=("Helvetica", 9),
+                        foreground=self.theme["muted"])
         style.configure("TPanedwindow", sashwidth=6, sashrelief="raised",
                         sashcursor="sb_h_double_arrow")
         style.configure("Status.TLabel", font=("Helvetica", 10))
@@ -333,6 +352,10 @@ class App:
         title_frame.pack(fill="x", padx=15, pady=(12, 0))
 
         ttk.Label(title_frame, text="SingBox Client", style="Title.TLabel").pack(side="left")
+        ver_lbl = ttk.Label(title_frame, style="Muted.TLabel",
+                            text=self.app_version if self.app_version == "dev"
+                            else f"v{self.app_version}")
+        ver_lbl.pack(side="left", padx=(8, 0), pady=(7, 0))
 
         # Status indicator
         self.status_label = ttk.Label(title_frame, text="● 未连接", style="Status.Off.TLabel")

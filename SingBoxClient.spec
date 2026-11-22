@@ -1,5 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import json
 import os
 import sys
 
@@ -8,6 +9,14 @@ _datas = [('core', 'core')]
 _sb = os.path.join('assets', 'sing-box.exe' if sys.platform == 'win32' else 'sing-box')
 if os.path.exists(_sb):
     _datas.append((_sb, 'assets'))
+
+# Version stamp: CI exports APP_VERSION from the git tag; the UI reads
+# assets/version.json from the bundle at startup ("dev" from source).
+_APP_VER = os.environ.get('APP_VERSION', 'dev')
+_vj = os.path.join('assets', 'version.json')
+with open(_vj, 'w', encoding='utf-8') as _f:
+    json.dump({'version': _APP_VER}, _f)
+_datas.append((_vj, 'assets'))
 
 a = Analysis(
     ['app.py'],
@@ -60,7 +69,7 @@ if sys.platform == 'darwin':
         bundle_identifier='local.singboxclient.app',
         info_plist={
             'CFBundleDisplayName': 'SingBox Client',
-            'CFBundleShortVersionString': '1.0',
+            'CFBundleShortVersionString': _APP_VER,
             'NSHighResolutionCapable': True,
         },
     )
