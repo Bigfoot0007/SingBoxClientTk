@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .DS_Store
 assets/AppIcon.iconset/
+assets/sing-box
+assets/sing-box.exe

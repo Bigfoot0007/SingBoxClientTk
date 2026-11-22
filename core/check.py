@@ -7,9 +7,18 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .nogui import nogui_kwargs
+from .bundled_bin import ensure_bundled
 
 SYSTEM = platform.system()
 PYTHON_VERSION = sys.version_info
+
+
+def data_dir() -> str:
+    """App data directory (nodes/settings/logs — and extracted bin/)."""
+    return os.path.expanduser(
+        "~/Library/Application Support/SingBoxClient" if SYSTEM == "Darwin"
+        else "~/.config/SingBoxClient" if SYSTEM == "Linux"
+        else "~/AppData/Roaming/SingBoxClient")
 
 
 class CheckResult:
@@ -39,7 +48,12 @@ class EnvChecker:
 
     @staticmethod
     def _singbox_binary() -> str:
-        """Locate the sing-box binary (PATH may be minimal when launched from Finder)."""
+        """Locate the sing-box binary. The bundled engine (extracted to
+        <data dir>/bin) wins; PATH may be minimal when launched from
+        Finder, so candidates follow."""
+        bundled = ensure_bundled(data_dir())
+        if bundled:
+            return bundled
         import shutil
         found = shutil.which("sing-box")
         if found:
@@ -92,13 +106,7 @@ class EnvChecker:
     @staticmethod
     def check_config_dir() -> dict:
         """Check if config directory is writable."""
-        path = os.path.expanduser(
-            "~/Library/Application Support/SingBoxClient"
-            if SYSTEM == "Darwin"
-            else "~/.config/SingBoxClient"
-            if SYSTEM == "Linux"
-            else "~/AppData/Roaming/SingBoxClient"
-        )
+        path = data_dir()
         try:
             os.makedirs(path, exist_ok=True)
             test_file = os.path.join(path, ".test")

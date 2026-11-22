@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
 import sys
+
+# Bundled sing-box engine (CI downloads it; absent in bare git checkouts).
+_datas = [('core', 'core')]
+_sb = os.path.join('assets', 'sing-box.exe' if sys.platform == 'win32' else 'sing-box')
+if os.path.exists(_sb):
+    _datas.append((_sb, 'assets'))
 
 a = Analysis(
     ['app.py'],
     pathex=[],
     binaries=[],
-    datas=[('core', 'core')],
+    datas=_datas,
     hiddenimports=['tkinter'],
     hookspath=[],
     hooksconfig={},
@@ -41,7 +48,8 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    # UPX on a Go binary (sing-box) is a known corruption risk — never touch it.
+    upx_exclude=['sing-box', 'sing-box.exe'],
     name='SingBoxClient',
 )
 if sys.platform == 'darwin':

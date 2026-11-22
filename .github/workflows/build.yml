@@ -14,10 +14,13 @@ jobs:
         include:
           - os: ubuntu-latest
             label: Linux
+            sb_asset: linux-amd64
           - os: windows-latest
             label: Windows
+            sb_asset: windows-amd64
           - os: macos-latest
             label: macOS
+            sb_asset: darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +32,30 @@ jobs:
       - name: Install tkinter (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y python3-tk
+
+      # Bundle the engine: the installer carries its own sing-box, so
+      # users never install one and the 1.14 config contract can't drift.
+      - name: Fetch bundled sing-box (Linux/macOS)
+        if: runner.os != 'Windows'
+        env:
+          SINGBOX_VER: "1.14.4"   # bump together with core/bundled_bin.py + config.py contract
+        run: |
+          curl -fsSL -o sb.tgz "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VER}/sing-box-${SINGBOX_VER}-${{ matrix.sb_asset }}.tar.gz"
+          tar -xzf sb.tgz
+          mkdir -p assets
+          cp "sing-box-${SINGBOX_VER}-${{ matrix.sb_asset }}/sing-box" assets/sing-box
+          chmod +x assets/sing-box
+          assets/sing-box version
+
+      - name: Fetch bundled sing-box (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest -Uri "https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-windows-amd64.zip" -OutFile sb.zip
+          Expand-Archive sb.zip -DestinationPath sb
+          New-Item -ItemType Directory -Force assets | Out-Null
+          Copy-Item sb/sing-box-1.14.4-windows-amd64/sing-box.exe assets/sing-box.exe
+          assets/sing-box.exe version
 
       - name: Build with PyInstaller
         run: |

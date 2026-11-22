@@ -5,6 +5,7 @@ import signal
 import platform
 
 from .nogui import nogui_kwargs
+from .bundled_bin import ensure_bundled
 
 
 class SingBoxManager:
@@ -13,13 +14,21 @@ class SingBoxManager:
     def __init__(self, binary_path=None, workdir=None):
         if binary_path:
             self.binary = binary_path
-        elif platform.system() == "Darwin":
-            self.binary = "/opt/homebrew/bin/sing-box"
-        elif platform.system() == "Linux":
-            self.binary = "/usr/local/bin/sing-box"
         else:
-            # Windows — sing-box.exe should be in current dir or PATH
-            self.binary = "sing-box.exe"
+            # Bundled engine first (installer ships sing-box; version is
+            # locked to the config generator's contract) — otherwise the
+            # usual system locations.
+            self.binary = (ensure_bundled(workdir) if workdir else "") \
+                or self._system_binary()
+
+    @staticmethod
+    def _system_binary() -> str:
+        if platform.system() == "Darwin":
+            return "/opt/homebrew/bin/sing-box"
+        if platform.system() == "Linux":
+            return "/usr/local/bin/sing-box"
+        # Windows — sing-box.exe should be in current dir or PATH
+        return "sing-box.exe"
         # Working directory: rule-set/geo caches are stored here,
         # so they survive restarts (otherwise they'd litter the CWD).
         self.workdir = workdir
