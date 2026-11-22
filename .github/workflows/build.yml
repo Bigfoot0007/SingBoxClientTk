@@ -62,6 +62,37 @@ jobs:
           python -m pip install --upgrade pip pyinstaller
           pyinstaller --noconfirm SingBoxClient.spec
 
+      # Smoke test: actually start the app. Compile-green caught a broken
+      # __init__ (v1.1.0) that crashed at first launch — a booting process
+      # is the release gate. Empty runner profile = no nodes = no connect.
+      - name: Smoke test (Windows, launch for 12 s)
+        if: runner.os == 'Windows'
+        run: |
+          $p = Start-Process -FilePath "dist\SingBoxClient\SingBoxClient.exe" -PassThru
+          Start-Sleep -Seconds 12
+          if ($p.HasExited) { "app died: exit $($p.ExitCode)"; exit 1 }
+          Stop-Process -Id $p.Id -Force
+          echo SMOKE_OK
+
+      - name: Smoke test (macOS, launch for 12 s)
+        if: runner.os == 'macOS'
+        run: |
+          dist/SingBoxClient.app/Contents/MacOS/SingBoxClient & pid=$!
+          sleep 12
+          kill -0 $pid || { echo "app died"; exit 1; }
+          kill $pid
+          echo SMOKE_OK
+
+      - name: Smoke test (Linux, xvfb)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y xvfb
+          xvfb-run -a dist/SingBoxClient/SingBoxClient & pid=$!
+          sleep 14
+          kill -0 $pid || { echo "app died"; cat dist/SingBoxClient/singbox.log 2>/dev/null; exit 1; }
+          kill $pid
+          echo SMOKE_OK
+
       - name: Package (Linux)
         if: runner.os == 'Linux'
         run: |
