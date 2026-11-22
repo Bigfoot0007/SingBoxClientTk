@@ -21,14 +21,6 @@ class SingBoxManager:
             self.binary = (ensure_bundled(workdir) if workdir else "") \
                 or self._system_binary()
 
-    @staticmethod
-    def _system_binary() -> str:
-        if platform.system() == "Darwin":
-            return "/opt/homebrew/bin/sing-box"
-        if platform.system() == "Linux":
-            return "/usr/local/bin/sing-box"
-        # Windows — sing-box.exe should be in current dir or PATH
-        return "sing-box.exe"
         # Working directory: rule-set/geo caches are stored here,
         # so they survive restarts (otherwise they'd litter the CWD).
         self.workdir = workdir
@@ -37,6 +29,15 @@ class SingBoxManager:
         self._process = None
         self._log_file = None
         self._version = None
+
+    @staticmethod
+    def _system_binary() -> str:
+        if platform.system() == "Darwin":
+            return "/opt/homebrew/bin/sing-box"
+        if platform.system() == "Linux":
+            return "/usr/local/bin/sing-box"
+        # Windows — sing-box.exe should be in current dir or PATH
+        return "sing-box.exe"
 
     def get_version(self) -> str:
         """Binary version, read once and cached."""
