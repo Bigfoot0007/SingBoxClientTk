@@ -160,7 +160,13 @@ class ConfigGenerator:
         return {"type": "direct", "tag": "unknown"}
 
     def _build_route(self) -> dict:
-        rules = [{"protocol": "dns", "action": "hijack-dns"}]
+        rules = [
+            {"protocol": "dns", "action": "hijack-dns"},
+            # Reserved addresses never touch the proxy, in any routing mode:
+            # ip_is_private is built into sing-box (no rule-set download) and
+            # covers RFC1918, loopback, link-local, CGNAT, multicast, ::1 etc.
+            {"ip_is_private": True, "outbound": "direct"},
+        ]
         route = {
             "rules": rules,
             # Required since 1.12: resolve proxy-server hostnames explicitly
