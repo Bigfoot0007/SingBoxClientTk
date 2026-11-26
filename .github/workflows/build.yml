@@ -23,9 +23,9 @@ jobs:
             sb_asset: darwin-arm64
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -140,7 +140,7 @@ jobs:
           hdiutil create -volname "SingBox Client" -srcfolder /tmp/sbc-stage \
             -ov -format UDZO dist-installers/SingBoxClient-macos-arm64.dmg
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: SingBoxClient-${{ matrix.label }}
           path: dist-installers/
@@ -154,7 +154,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: SingBoxClient-*
           path: release-files/
