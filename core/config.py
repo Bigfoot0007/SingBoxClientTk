@@ -159,9 +159,18 @@ class ConfigGenerator:
 
         return {"type": "direct", "tag": "unknown"}
 
+    # Internal hostname suffixes resolved by the system (local) resolver, so
+    # LAN/internal names reach ip_is_private below instead of failing at 8.8.8.8.
+    LAN_DOMAINS = ["local", "lan", "home", "internal", "corp", "arpa"]
+
     def _build_route(self) -> dict:
         rules = [
             {"protocol": "dns", "action": "hijack-dns"},
+            # Pre-resolve destinations: without this, IP-field rules below are
+            # skipped for domain targets (sing-box matches them only against a
+            # resolved address). Unlisted domains resolve through the DNS split
+            # below (foreign → remote via proxy, so no local poisoning risk).
+            {"action": "resolve", "strategy": "prefer_ipv4"},
             # Reserved addresses never touch the proxy, in any routing mode:
             # ip_is_private is built into sing-box (no rule-set download) and
             # covers RFC1918, loopback, link-local, CGNAT, multicast, ::1 etc.
@@ -205,7 +214,11 @@ class ConfigGenerator:
                 {"tag": "remote", "type": "tls", "server": "8.8.8.8",
                  "detour": "proxy"}
             ],
-            "rules": [],
+            "rules": [
+                {"domain": ["localhost"],
+                 "domain_suffix": self.LAN_DOMAINS,
+                 "server": "local"},
+            ],
             "final": "remote"
         }
         if self.routing_mode == self.ROUTING_GEO:
