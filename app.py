@@ -96,7 +96,16 @@ def _set_window_icon(win):
     assets = os.path.join(base, "assets")
     ico = os.path.join(assets, "AppIcon.ico")
     if sys.platform == "win32":
-        _win_icon_fix(win, ico)
+        if not _win_icon_fix(win, ico):
+            # The decorated wrapper HWND Tk wraps each toplevel in does not
+            # exist until the window's first Map (tkWinWm.c Map() creates
+            # it and reparents the child under it) — and the wrapper is
+            # the window Windows asks for the titlebar/taskbar icon.
+            # Retry from the Map event once.
+            def _on_map(_event):
+                win.unbind("<Map>")
+                _win_icon_fix(win, ico)
+            win.bind("<Map>", _on_map, add="+")
         return
     global _icon_photo
     if _icon_photo is None:
@@ -126,11 +135,14 @@ def _win_icon_fix(win, ico):
     via SetClassLongPtrW, which every Tk toplevel — dialogs, message
     boxes — inherits once the class default (feather) is gone. An
     explicit AppUserModelID claims the taskbar button for this process.
-    Logs one line set to <data dir>/icon_debug.txt at startup: this bug
-    class is invisible from macOS, so field reports need the receipts."""
+    Returns False while the window is still unmapped (no wrapper HWND —
+    caller retries from <Map>). Logs one line set to
+    <data dir>/icon_debug.txt per real attempt: this bug class is
+    invisible from macOS, so field reports need the receipts."""
     global _icon_debug_logged
     import ctypes
     log = []
+    hwnd = hbig = None
     try:
         hr = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
             "local.singboxclient.app")
@@ -169,6 +181,12 @@ def _win_icon_fix(win, ico):
             log.append("no wrapper/hicon — icon calls skipped")
     except (OSError, AttributeError) as exc:
         log.append(f"winicon failed: {exc!r}")
+    if hwnd and hbig:
+        return True
+    # Unmapped yet (wrapper absent but the ICO loaded fine): defer, don't
+    # burn the log file on a half-attempt.
+    if not hwnd and hbig:
+        return False
     if not _icon_debug_logged:
         _icon_debug_logged = True
         try:
