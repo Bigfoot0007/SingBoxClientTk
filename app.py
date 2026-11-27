@@ -98,6 +98,7 @@ def _set_window_icon(win):
     if sys.platform == "win32" and os.path.exists(ico):
         try:
             win.iconbitmap(ico)
+            _win_taskbar_icon(win, ico)
             return
         except tk.TclError:
             pass
@@ -111,6 +112,36 @@ def _set_window_icon(win):
     try:
         win.iconphoto(True, _icon_photo)
     except tk.TclError:
+        pass
+
+
+def _win_taskbar_icon(win, ico):
+    """The Win11 taskbar button ignores the icon Tk's iconbitmap sets —
+    that lands the 16px titlebar icon, while the button reads the
+    process's AppUserModelID association and WM_SETICON(ICON_BIG), and
+    otherwise falls back to Tk's feather window-class icon. Claim the
+    button with an explicit AppUserModelID and push a real big icon."""
+    import ctypes
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "local.singboxclient.app")
+    except OSError:
+        pass
+    try:
+        user32 = ctypes.windll.user32
+        user32.GetParent.restype = ctypes.c_void_p
+        user32.LoadImageW.restype = ctypes.c_void_p
+        user32.LoadImageW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
+                                      ctypes.c_uint, ctypes.c_int,
+                                      ctypes.c_int, ctypes.c_uint]
+        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                        ctypes.c_size_t, ctypes.c_void_p]
+        hwnd = user32.GetParent(win.winfo_id())   # decorated frame, not client
+        hicon = user32.LoadImageW(None, ico, 1,   # IMAGE_ICON
+                                  48, 48, 0x10)   # LR_LOADFROMFILE
+        if hwnd and hicon:
+            user32.SendMessageW(hwnd, 0x0080, 1, hicon)  # WM_SETICON/ICON_BIG
+    except OSError:
         pass
 
 

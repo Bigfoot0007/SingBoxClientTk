@@ -158,8 +158,24 @@ def downscale(rows, side):
     return out
 
 
+def ico_bmp(rows, side):
+    """BITMAPINFOHEADER form of an RGBA image for an ICO entry: bottom-up
+    32bpp BGRA + all-zero AND mask. Classic BMP entries — NOT the
+    PNG-compressed Vista+ kind: the Windows taskbar icon path and
+    LoadImageW render PNG entries unreliably (the taskbar button falls
+    back to the feather default)."""
+    hdr = struct.pack("<IiiHHIIiiII", 40, side, side * 2, 1, 32, 0,
+                      0, 0, 0, 0, 0)
+    px = b"".join(
+        b"".join(bytes((row[i + 2], row[i + 1], row[i], row[i + 3]))
+                 for i in range(0, side * 4, 4))
+        for row in reversed(rows))
+    mask = b"\x00" * (((side + 31) // 32) * 4) * side
+    return hdr + px + mask
+
+
 def write_ico(path, entries):
-    """entries: [(side, png_bytes), ...] — PNG-embedded ICO (Vista+)."""
+    """entries: [(side, bmp_bytes from ico_bmp), ...] — classic ICO."""
     out = struct.pack("<HHH", 0, 1, len(entries))
     off = 6 + 16 * len(entries)
     for side, png in entries:
@@ -182,7 +198,7 @@ def main():
     print("master:", master)
 
     ico = os.path.join(assets, "AppIcon.ico")
-    entries = [(s, png_bytes(downscale(rows, s), s))
+    entries = [(s, ico_bmp(downscale(rows, s), s))
                for s in (16, 32, 48, 256)]
     write_ico(ico, entries)
     print("ico:", ico)
