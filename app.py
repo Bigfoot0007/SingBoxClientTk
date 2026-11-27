@@ -87,21 +87,17 @@ _icon_photo = None  # keep the PhotoImage alive; Tk icons die when it is GC'd
 def _set_window_icon(win):
     """Tk's built-in feather icon shows in the Windows taskbar/titlebar
     unless we set our own — the EXE resource icon only covers the file
-    icon in Explorer. Windows: multi-size .ico via iconbitmap (crisp at
-    16/32/48/256); elsewhere the PNG master as the app-wide iconphoto
+    icon in Explorer. On Windows the icon path skips Tk entirely (see
+    _win_icon_fix); elsewhere the PNG master is the app-wide iconphoto
     default. Loaded from the bundle's assets/ (PyInstaller _MEIPASS) or,
     from source, the repo's assets/."""
     base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
         os.path.abspath(__file__))
     assets = os.path.join(base, "assets")
     ico = os.path.join(assets, "AppIcon.ico")
-    if sys.platform == "win32" and os.path.exists(ico):
-        try:
-            win.iconbitmap(ico)
-            _win_taskbar_icon(win, ico)
-            return
-        except tk.TclError:
-            pass
+    if sys.platform == "win32":
+        _win_icon_fix(win, ico)
+        return
     global _icon_photo
     if _icon_photo is None:
         try:
@@ -115,34 +111,75 @@ def _set_window_icon(win):
         pass
 
 
-def _win_taskbar_icon(win, ico):
-    """The Win11 taskbar button ignores the icon Tk's iconbitmap sets —
-    that lands the 16px titlebar icon, while the button reads the
-    process's AppUserModelID association and WM_SETICON(ICON_BIG), and
-    otherwise falls back to Tk's feather window-class icon. Claim the
-    button with an explicit AppUserModelID and push a real big icon."""
+_icon_debug_logged = False
+
+
+def _win_icon_fix(win, ico):
+    """Set the real window/taskbar icon on Windows through the native API,
+    bypassing Tk entirely: tkWinWm.c parses every ICO entry into
+    CreateIconFromResourceEx without validating results, so a rejected
+    entry leaves NULL HICONs while `wm iconbitmap` still "succeeds" —
+    WM_SETICON then lands NULL and the taskbar button falls back to Tk's
+    feather window-class icon (the failure mode we shipped twice). Load
+    the .ico with LoadImageW instead and set WM_SETICON (small+big) on
+    the decorated wrapper HWND plus GCLP_HICON/GCLP_HICONSM class slots
+    via SetClassLongPtrW, which every Tk toplevel — dialogs, message
+    boxes — inherits once the class default (feather) is gone. An
+    explicit AppUserModelID claims the taskbar button for this process.
+    Logs one line set to <data dir>/icon_debug.txt at startup: this bug
+    class is invisible from macOS, so field reports need the receipts."""
+    global _icon_debug_logged
     import ctypes
+    log = []
     try:
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+        hr = ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
             "local.singboxclient.app")
-    except OSError:
-        pass
+        log.append(f"AUMID hr={hr}")
+    except (OSError, AttributeError) as exc:
+        log.append(f"AUMID failed: {exc!r}")
     try:
-        user32 = ctypes.windll.user32
-        user32.GetParent.restype = ctypes.c_void_p
-        user32.LoadImageW.restype = ctypes.c_void_p
-        user32.LoadImageW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
-                                      ctypes.c_uint, ctypes.c_int,
-                                      ctypes.c_int, ctypes.c_uint]
-        user32.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
-                                        ctypes.c_size_t, ctypes.c_void_p]
-        hwnd = user32.GetParent(win.winfo_id())   # decorated frame, not client
-        hicon = user32.LoadImageW(None, ico, 1,   # IMAGE_ICON
-                                  48, 48, 0x10)   # LR_LOADFROMFILE
-        if hwnd and hicon:
-            user32.SendMessageW(hwnd, 0x0080, 1, hicon)  # WM_SETICON/ICON_BIG
-    except OSError:
-        pass
+        u = ctypes.windll.user32
+        u.GetParent.restype = ctypes.c_void_p
+        u.LoadImageW.restype = ctypes.c_void_p
+        u.LoadImageW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p,
+                                 ctypes.c_uint, ctypes.c_int, ctypes.c_int,
+                                 ctypes.c_uint]
+        u.SendMessageW.restype = ctypes.c_void_p
+        u.SendMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint,
+                                   ctypes.c_size_t, ctypes.c_void_p]
+        setcls = getattr(u, "SetClassLongPtrW", None) or u.SetClassLongW
+        setcls.restype = ctypes.c_size_t
+        setcls.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p]
+
+        hwnd = u.GetParent(win.winfo_id())        # wrapper frame, not client
+        hbig = u.LoadImageW(None, ico, 1, 48, 48, 0x10)    # IMAGE_ICON|LR_LOADFROMFILE
+        hsmall = u.LoadImageW(None, ico, 1, 32, 32, 0x10)
+        log.append(f"ico={ico!r} exists={os.path.exists(ico)}")
+        log.append(f"wrapper={hwnd!r} hbig={hbig!r} hsmall={hsmall!r}")
+        if hwnd and hbig:
+            u.SendMessageW(hwnd, 0x0080, 1, hbig)          # WM_SETICON ICON_BIG
+            if hsmall:
+                u.SendMessageW(hwnd, 0x0080, 0, hsmall)    # WM_SETICON ICON_SMALL
+            log.append(f"WM_GETICON big -> "
+                       f"{u.SendMessageW(hwnd, 0x000D, 1, None)!r}")
+            setcls(hwnd, -14, hbig)                        # GCLP_HICON
+            setcls(hwnd, -34, hsmall or hbig)              # GCLP_HICONSM
+            log.append("window+class slots set")
+        else:
+            log.append("no wrapper/hicon — icon calls skipped")
+    except (OSError, AttributeError) as exc:
+        log.append(f"winicon failed: {exc!r}")
+    if not _icon_debug_logged:
+        _icon_debug_logged = True
+        try:
+            base = os.path.expanduser("~/AppData/Roaming/SingBoxClient")
+            os.makedirs(base, exist_ok=True)
+            with open(os.path.join(base, "icon_debug.txt"), "w",
+                      encoding="utf-8") as f:
+                f.write(f"tk {tk.TkVersion} py {sys.version.split()[0]}\n"
+                        + "\n".join(log) + "\n")
+        except OSError:
+            pass
 
 
 def _fmt_rate(bps: float) -> str:
