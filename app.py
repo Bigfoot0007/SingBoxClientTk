@@ -81,6 +81,39 @@ def _app_version() -> str:
     return "dev"
 
 
+_icon_photo = None  # keep the PhotoImage alive; Tk icons die when it is GC'd
+
+
+def _set_window_icon(win):
+    """Tk's built-in feather icon shows in the Windows taskbar/titlebar
+    unless we set our own — the EXE resource icon only covers the file
+    icon in Explorer. Windows: multi-size .ico via iconbitmap (crisp at
+    16/32/48/256); elsewhere the PNG master as the app-wide iconphoto
+    default. Loaded from the bundle's assets/ (PyInstaller _MEIPASS) or,
+    from source, the repo's assets/."""
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+        os.path.abspath(__file__))
+    assets = os.path.join(base, "assets")
+    ico = os.path.join(assets, "AppIcon.ico")
+    if sys.platform == "win32" and os.path.exists(ico):
+        try:
+            win.iconbitmap(ico)
+            return
+        except tk.TclError:
+            pass
+    global _icon_photo
+    if _icon_photo is None:
+        try:
+            _icon_photo = tk.PhotoImage(
+                file=os.path.join(assets, "AppIcon.png"))
+        except tk.TclError:
+            return
+    try:
+        win.iconphoto(True, _icon_photo)
+    except tk.TclError:
+        pass
+
+
 def _fmt_rate(bps: float) -> str:
     if bps < 1024:
         return f"{bps:.0f} B/s"
@@ -124,6 +157,7 @@ class NodeDialog:
     def __init__(self, parent, node_data=None):
         self.result = None
         self.dialog = tk.Toplevel(parent)
+        _set_window_icon(self.dialog)
         self.dialog.title("添加节点" if not node_data else "编辑节点")
         self.dialog.geometry("420x520")
         self.dialog.resizable(False, False)
@@ -825,6 +859,7 @@ class App:
     def _import_nodes(self):
         """Import nodes from clipboard."""
         dialog = tk.Toplevel(self.root)
+        _set_window_icon(dialog)
         dialog.title("导入节点")
         dialog.geometry("450x300")
         dialog.transient(self.root)
@@ -1672,6 +1707,7 @@ def main():
         return  # a main UI already exists (it lifts itself); exit quietly
 
     root = tk.Tk()
+    _set_window_icon(root)
     root.title("SingBoxClient")
 
     # SIGTERM (kills, logouts): exit through Tk so atexit frees the lock

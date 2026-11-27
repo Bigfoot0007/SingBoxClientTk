@@ -10,6 +10,14 @@ _sb = os.path.join('assets', 'sing-box.exe' if sys.platform == 'win32' else 'sin
 if os.path.exists(_sb):
     _datas.append((_sb, 'assets'))
 
+# Runtime window icon: the EXE `icon=` only covers Explorer's file icon —
+# Tk shows its feather default in the taskbar/titlebar until app.py loads
+# the .ico (PNG master = iconphoto fallback on other platforms).
+for _ic in ('AppIcon.ico', 'AppIcon.png'):
+    _p = os.path.join('assets', _ic)
+    if os.path.exists(_p):
+        _datas.append((_p, 'assets'))
+
 # GEO rule-set bootstrap copies (offline first boot)
 _rs = os.path.join('assets', 'rule-sets')
 if os.path.isdir(_rs):
