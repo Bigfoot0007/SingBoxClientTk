@@ -166,11 +166,19 @@ class ConfigGenerator:
     def _build_route(self) -> dict:
         rules = [
             {"protocol": "dns", "action": "hijack-dns"},
-            # Pre-resolve destinations: without this, IP-field rules below are
-            # skipped for domain targets (sing-box matches them only against a
-            # resolved address). Unlisted domains resolve through the DNS split
-            # below (foreign → remote via proxy, so no local poisoning risk).
-            {"action": "resolve", "strategy": "prefer_ipv4"},
+            # Pre-resolve LAN/internal names ONLY, so ip_is_private below can
+            # still catch reserved addresses hidden behind hostnames (*.local,
+            # *.lan, ...). The former GLOBAL {"action": "resolve"} is gone: the
+            # resolve action uses route.default_domain_resolver (local system
+            # DNS) — NOT the dns.rules split — and the browser never resolves
+            # target hostnames itself when proxied (CONNECT carries the name).
+            # So every new connection serially re-hit the router DNS: 3–17 s
+            # stalls (observed), NXDOMAIN on valid foreign domains, and failed
+            # lookups closed the connection outright. GEO needs no pre-resolve:
+            # geosite-cn matches domain targets, and geoip-cn / ip_is_private
+            # still match IP-literal targets untouched.
+            {"domain_suffix": self.LAN_DOMAINS,
+             "action": "resolve", "strategy": "prefer_ipv4"},
             # Reserved addresses never touch the proxy, in any routing mode:
             # ip_is_private is built into sing-box (no rule-set download) and
             # covers RFC1918, loopback, link-local, CGNAT, multicast, ::1 etc.

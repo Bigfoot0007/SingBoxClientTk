@@ -20,9 +20,13 @@ import threading
 from collections import OrderedDict
 
 _ANSI = re.compile(r"\x1b\[[0-9;]*m")
+# sing-box renders the per-connection age adaptively: "23ms" under a second,
+# "11.5s" / "10.0s" beyond it — the closing "outbound connection to" line
+# carries the whole setup time, so matching only \d+ms silently dropped every
+# connection slower than 1 s (which is most of them when DNS is slow).
 _LINE = re.compile(
     r"^\+\d{4} (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+INFO\s+"
-    r"\[(\d+)\s+\d+ms\]\s+(?:inbound|outbound)/(\w+)\[([\w.-]+)\]:\s+"
+    r"\[(\d+)\s+\d+(?:\.\d+)?(?:ms|s)\]\s+(?:inbound|outbound)/(\w+)\[([\w.-]+)\]:\s+"
     r"(inbound connection from|inbound connection to|"
     r"outbound connection to)\s+(\S+)")
 
